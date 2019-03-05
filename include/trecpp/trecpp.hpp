@@ -95,7 +95,7 @@ class Record {
     [[nodiscard]] auto content() -> std::string & { return content_; }
     [[nodiscard]] auto content() const -> std::string const & { return content_; }
     [[nodiscard]] auto url() const -> std::string const & { return url_; }
-    [[nodiscard]] auto docno() const -> std::string const & { return docno_; }
+    [[nodiscard]] auto trecid() const -> std::string const & { return docno_; }
 
     friend std::ostream &operator<<(std::ostream &os, Record const &record);
 };

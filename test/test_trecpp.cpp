@@ -138,7 +138,7 @@ TEST_CASE("Read record", "[unit]")
     CAPTURE(rec);
     Record *record = std::get_if<Record>(&rec);
     REQUIRE(record != nullptr);
-    REQUIRE(record->docno() == "GX000-00-0000000");
+    REQUIRE(record->trecid() == "GX000-00-0000000");
     REQUIRE(record->url() == "http://sgra.jpl.nasa.gov");
     REQUIRE(record->content() == "<html>");
     rec = read_record(is);
@@ -147,7 +147,7 @@ TEST_CASE("Read record", "[unit]")
     CAPTURE(rec);
     record = std::get_if<Record>(&rec);
     REQUIRE(record != nullptr);
-    REQUIRE(record->docno() == "GX000-00-0000001");
+    REQUIRE(record->trecid() == "GX000-00-0000001");
     REQUIRE(record->url() == "http://sgra.jpl.nasa.gov");
     REQUIRE(record->content() == "<html> 2");
 }
