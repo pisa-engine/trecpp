@@ -149,9 +149,14 @@ constexpr bool holds_record(Result const &result) { return std::holds_alternativ
         return consume_error(detail::DOCHDR_END);
     }
     is.putback('<');
-    if (not detail::consume_tag(is, detail::DOCHDR_END)) {
-        return consume_error(detail::DOCHDR_END);
+    while (not is.eof() and not detail::consume_tag(is, detail::DOCHDR_END)) {
+        is.ignore(1);
+        is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
+        is.putback('<');
     }
+    //if (not detail::consume_tag(is, detail::DOCHDR_END)) {
+    //    return consume_error(detail::DOCHDR_END);
+    //}
     is >> std::ws;
     auto content = detail::read_body(is);
     if (not content) {
@@ -163,6 +168,9 @@ constexpr bool holds_record(Result const &result) { return std::holds_alternativ
 [[nodiscard]] auto read_subsequent_record(std::istream &is) -> Result
 {
     is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
+    if (is.eof()) {
+        return Error{"EOF"};
+    }
     is.putback('<');
     while (not is.eof() and not detail::consume_tag(is, detail::DOC)) {
         is.ignore(1);

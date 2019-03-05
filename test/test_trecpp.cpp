@@ -102,10 +102,10 @@ TEST_CASE("Read record", "[unit]")
         "</DOC>\n        \t"
         "<DOC>\n"
         "<DOCNO>GX000-00-0000001</DOCNO>\n"
-        "<DOCHDR>\n"
+        "<DCHDR>\n"
         "http://sgra.jpl.nasa.gov\n"
         "HTTP/1.1 200 OK\n"
-        "<<Date: Tue, 09 Dec 2003 21:21:33 GMT\n"
+        "Date: Tue, 09 Dec 2003 21:21:33 GMT\n"
         "Server: Apache/1.3.27 (Unix)\n"
         "Last-Modified: Tue, 26 Mar 2002 19:24:25 GMT\n"
         "ETag: \"6361e-266-3ca0cae9\n"
@@ -122,7 +122,7 @@ TEST_CASE("Read record", "[unit]")
         "<DOCHDR>\n"
         "http://sgra.jpl.nasa.gov\n"
         "HTTP/1.1 200 OK\n"
-        "Date: Tue, 09 Dec 2003 21:21:33 GMT\n"
+        "<<<Date: Tue, 09 Dec 2003 21:21:33 GMT\n"
         "Server: Apache/1.3.27 (Unix)\n"
         "Last-Modified: Tue, 26 Mar 2002 19:24:25 GMT\n"
         "ETag: \"6361e-266-3ca0cae9\n"
@@ -133,7 +133,7 @@ TEST_CASE("Read record", "[unit]")
         "Content-Type: text/html\n"
         "</DOCHDR>\n"
         "<html> 2"
-        "</DOC>\n");
+        "</DOC>");
     auto rec = read_record(is);
     CAPTURE(rec);
     Record *record = std::get_if<Record>(&rec);
@@ -150,4 +150,6 @@ TEST_CASE("Read record", "[unit]")
     REQUIRE(record->trecid() == "GX000-00-0000001");
     REQUIRE(record->url() == "http://sgra.jpl.nasa.gov");
     REQUIRE(record->content() == "<html> 2");
+    rec = read_subsequent_record(is);
+    REQUIRE(std::get_if<Error>(&rec) != nullptr);
 }
