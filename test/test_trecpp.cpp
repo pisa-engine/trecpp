@@ -59,7 +59,7 @@ TEST_CASE("Read body", "[unit]")
     SECTION("Before tag")
     {
         std::istringstream is("text</DOC>rest");
-        REQUIRE(read_body(is) == "text");
+        REQUIRE(read_body(is, detail::DOC_END) == "text");
         std::string s;
         is >> s;
         REQUIRE(s == "rest");
@@ -67,20 +67,20 @@ TEST_CASE("Read body", "[unit]")
     SECTION("At the end")
     {
         std::istringstream is("text");
-        REQUIRE(read_body(is) == std::nullopt);
+        REQUIRE(read_body(is, detail::DOC_END) == std::nullopt);
         REQUIRE(is.peek() == std::ifstream::traits_type::eof());
     }
     SECTION("With brackets")
     {
         std::istringstream is("test <a>link</a> </DOC>rest");
-        REQUIRE(read_body(is) == "test <a>link</a> ");
+        REQUIRE(read_body(is, detail::DOC_END) == "test <a>link</a> ");
         std::string s;
         is >> s;
         REQUIRE(s == "rest");
     }
 }
 
-TEST_CASE("Read record", "[unit]")
+TEST_CASE("Read web record", "[unit]")
 {
     std::istringstream is(
         "<DOC>\n"
@@ -134,22 +134,63 @@ TEST_CASE("Read record", "[unit]")
         "</DOCHDR>\n"
         "<html> 2"
         "</DOC>");
-    auto rec = read_record(is);
+    auto rec = web::read_record(is);
     CAPTURE(rec);
     Record *record = std::get_if<Record>(&rec);
     REQUIRE(record != nullptr);
     REQUIRE(record->trecid() == "GX000-00-0000000");
     REQUIRE(record->url() == "http://sgra.jpl.nasa.gov");
     REQUIRE(record->content() == "<html>");
-    rec = read_record(is);
+    rec = web::read_record(is);
     REQUIRE(std::get_if<Error>(&rec) != nullptr);
-    rec = read_subsequent_record(is);
+    rec = web::read_subsequent_record(is);
     CAPTURE(rec);
     record = std::get_if<Record>(&rec);
     REQUIRE(record != nullptr);
     REQUIRE(record->trecid() == "GX000-00-0000001");
     REQUIRE(record->url() == "http://sgra.jpl.nasa.gov");
     REQUIRE(record->content() == "<html> 2");
-    rec = read_subsequent_record(is);
+    rec = web::read_subsequent_record(is);
+    REQUIRE(std::get_if<Error>(&rec) != nullptr);
+}
+
+TEST_CASE("Read text record", "[unit]")
+{
+    std::istringstream is(
+        "<DOC>\n"
+        "<DOCNO>GX000-00-0000000</DOCNO>\n"
+        "<TEXT>"
+        "<html>"
+        "</TEXT>"
+        "</DOC>\n        \t"
+        "<DOC>\n"
+        "<DOCNO>GX000-00-0000001</DOCNO>\n"
+        "<TEXT>"
+        "<html> 2"
+        "</TEXT>"
+        "</DOC>\n"
+        "<DOC>\n"
+        "<DOCNO>GX000-00-0000001</DOCNO>\n"
+        "<TEX>\n"
+        "<html> 2"
+        "</TEXT>\n"
+        "</DOC>");
+    auto rec = text::read_record(is);
+    CAPTURE(rec);
+    Record *record = std::get_if<Record>(&rec);
+    REQUIRE(record != nullptr);
+    REQUIRE(record->trecid() == "GX000-00-0000000");
+    REQUIRE(record->url() == "");
+    REQUIRE(record->content() == "<html>");
+    rec = text::read_record(is);
+    REQUIRE(std::get_if<Error>(&rec) != nullptr);
+    rec = text::read_subsequent_record(is);
+    CAPTURE(rec);
+    record = std::get_if<Record>(&rec);
+    REQUIRE(record != nullptr);
+    REQUIRE(record->trecid() == "GX000-00-0000001");
+    REQUIRE(record->url() == "");
+    REQUIRE(record->content() == "<html> 2");
+    rec = text::read_subsequent_record(is);
     REQUIRE(std::get_if<Error>(&rec) != nullptr);
 }

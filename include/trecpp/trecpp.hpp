@@ -13,6 +13,25 @@ struct Error {
 class Record;
 using Result = std::variant<Record, Error>;
 
+class Record {
+   private:
+    std::string docno_;
+    std::string url_;
+    std::string content_;
+
+   public:
+    Record(std::string docno, std::string url, std::string content)
+        : docno_(std::move(docno)), url_(std::move(url)), content_(std::move(content))
+    {}
+    [[nodiscard]] auto content_length() const -> std::size_t { return content_.size(); }
+    [[nodiscard]] auto content() -> std::string & { return content_; }
+    [[nodiscard]] auto content() const -> std::string const & { return content_; }
+    [[nodiscard]] auto url() const -> std::string const & { return url_; }
+    [[nodiscard]] auto trecid() const -> std::string const & { return docno_; }
+
+    friend std::ostream &operator<<(std::ostream &os, Record const &record);
+};
+
 namespace detail {
 
     static std::string const DOC = "<DOC>";
@@ -21,6 +40,8 @@ namespace detail {
     static std::string const DOCNO_END = "</DOCNO>";
     static std::string const DOCHDR = "<DOCHDR>";
     static std::string const DOCHDR_END = "</DOCHDR>";
+    static std::string const TEXT = "<TEXT>";
+    static std::string const TEXT_END = "</TEXT>";
 
     bool consume_tag(std::istream &is, std::string const &token)
     {
@@ -58,14 +79,14 @@ namespace detail {
         return os.str();
     }
 
-    std::optional<std::string> read_body(std::istream &is)
+    std::optional<std::string> read_body(std::istream &is, std::string const &closing_tag)
     {
         std::ostringstream os;
         while (read_until(is, [](auto ch) { return ch == '<'; }, os)) {
             if (is.peek() == std::istream::traits_type::eof()) {
                 break;
             }
-            if (consume_tag(is, detail::DOC_END)) {
+            if (consume_tag(is, closing_tag)) {
                 return std::make_optional(os.str());
             }
             os.put(is.get());
@@ -78,27 +99,29 @@ namespace detail {
         return read_until(is, [](char c) { return c == '<' || std::isspace(c); });
     }
 
+    template <class ReadRecord>
+    [[nodiscard]] auto read_subsequent_record(std::istream &is, ReadRecord read_record) -> Result
+    {
+        is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
+        if (is.eof()) {
+            return Error{"EOF"};
+        }
+        is.putback('<');
+        while (not is.eof() and not detail::consume_tag(is, detail::DOC)) {
+            is.ignore(1);
+            is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
+            is.putback('<');
+        }
+        if (not is.eof()) {
+            for (auto pos = detail::DOC.rbegin(); pos != detail::DOC.rend(); ++pos) {
+                is.putback(*pos);
+            }
+            return read_record(is);
+        }
+        return Error{"EOF"};
+    }
+
 } // namespace detail
-
-
-class Record {
-   private:
-    std::string docno_;
-    std::string url_;
-    std::string content_;
-
-   public:
-    Record(std::string docno, std::string url, std::string content)
-        : docno_(std::move(docno)), url_(std::move(url)), content_(std::move(content))
-    {}
-    [[nodiscard]] auto content_length() const -> std::size_t { return content_.size(); }
-    [[nodiscard]] auto content() -> std::string & { return content_; }
-    [[nodiscard]] auto content() const -> std::string const & { return content_; }
-    [[nodiscard]] auto url() const -> std::string const & { return url_; }
-    [[nodiscard]] auto trecid() const -> std::string const & { return docno_; }
-
-    friend std::ostream &operator<<(std::ostream &os, Record const &record);
-};
 
 template <typename Record_Handler, typename Error_Handler>
 auto match(Result const &result, Record_Handler &&record_handler, Error_Handler &&error_handler)
@@ -126,65 +149,83 @@ constexpr bool holds_record(Result const &result) { return std::holds_alternativ
     return Error{"Could not consume " + tag};
 }
 
-[[nodiscard]] auto read_record(std::istream &is) -> Result
-{
-    if (not detail::consume_tag(is, detail::DOC)) {
-        return consume_error(detail::DOC);
+namespace text {
+
+    [[nodiscard]] auto read_record(std::istream &is) -> Result
+    {
+        if (not detail::consume_tag(is, detail::DOC)) {
+            return consume_error(detail::DOC);
+        }
+        if (not detail::consume_tag(is, detail::DOCNO)) {
+            return consume_error(detail::DOCNO);
+        }
+        is >> std::ws;
+        auto docno = detail::read_token(is);
+        if (not detail::consume_tag(is, detail::DOCNO_END)) {
+            return consume_error(detail::DOCNO_END);
+        }
+        if (not detail::consume_tag(is, detail::TEXT)) {
+            return consume_error(detail::TEXT);
+        }
+        is >> std::ws;
+        auto content = detail::read_body(is, detail::TEXT_END);
+        if (not content) {
+            return consume_error(detail::TEXT_END);
+        }
+        return Record(std::move(docno), "", std::move(*content));
     }
-    if (not detail::consume_tag(is, detail::DOCNO)) {
-        return consume_error(detail::DOCNO);
+
+    [[nodiscard]] auto read_subsequent_record(std::istream &is) -> Result
+    {
+        return detail::read_subsequent_record(is, read_record);
     }
-    is >> std::ws;
-    auto docno = detail::read_token(is);
-    if (not detail::consume_tag(is, detail::DOCNO_END)) {
-        return consume_error(detail::DOCNO_END);
-    }
-    if (not detail::consume_tag(is, detail::DOCHDR)) {
-        return consume_error(detail::DOCHDR);
-    }
-    is >> std::ws;
-    auto url = detail::read_token(is);
-    is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
-    if (not is) {
-        return consume_error(detail::DOCHDR_END);
-    }
-    is.putback('<');
-    while (not is.eof() and not detail::consume_tag(is, detail::DOCHDR_END)) {
-        is.ignore(1);
-        is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
-        is.putback('<');
-    }
-    //if (not detail::consume_tag(is, detail::DOCHDR_END)) {
-    //    return consume_error(detail::DOCHDR_END);
-    //}
-    is >> std::ws;
-    auto content = detail::read_body(is);
-    if (not content) {
-        return consume_error(detail::DOC_END);
-    }
-    return Record(std::move(docno), std::move(url), std::move(*content));
+
 }
 
-[[nodiscard]] auto read_subsequent_record(std::istream &is) -> Result
-{
-    is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
-    if (is.eof()) {
-        return Error{"EOF"};
-    }
-    is.putback('<');
-    while (not is.eof() and not detail::consume_tag(is, detail::DOC)) {
-        is.ignore(1);
-        is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
-        is.putback('<');
-    }
-    if (not is.eof()) {
-        for (auto pos = detail::DOC.rbegin(); pos != detail::DOC.rend(); ++pos) {
-            is.putback(*pos);
+namespace web {
+
+    [[nodiscard]] auto read_record(std::istream &is) -> Result
+    {
+        if (not detail::consume_tag(is, detail::DOC)) {
+            return consume_error(detail::DOC);
         }
-        return read_record(is);
+        if (not detail::consume_tag(is, detail::DOCNO)) {
+            return consume_error(detail::DOCNO);
+        }
+        is >> std::ws;
+        auto docno = detail::read_token(is);
+        if (not detail::consume_tag(is, detail::DOCNO_END)) {
+            return consume_error(detail::DOCNO_END);
+        }
+        if (not detail::consume_tag(is, detail::DOCHDR)) {
+            return consume_error(detail::DOCHDR);
+        }
+        is >> std::ws;
+        auto url = detail::read_token(is);
+        is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
+        if (not is) {
+            return consume_error(detail::DOCHDR_END);
+        }
+        is.putback('<');
+        while (not is.eof() and not detail::consume_tag(is, detail::DOCHDR_END)) {
+            is.ignore(1);
+            is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
+            is.putback('<');
+        }
+        is >> std::ws;
+        auto content = detail::read_body(is, detail::DOC_END);
+        if (not content) {
+            return consume_error(detail::DOC_END);
+        }
+        return Record(std::move(docno), std::move(url), std::move(*content));
     }
-    return Error{"EOF"};
-}
+
+    [[nodiscard]] auto read_subsequent_record(std::istream &is) -> Result
+    {
+        return detail::read_subsequent_record(is, read_record);
+    }
+
+} // namespace web
 
 std::ostream &operator<<(std::ostream &os, Record const &record)
 {
