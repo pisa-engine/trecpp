@@ -1,7 +1,7 @@
 trecpp
 ======
 
-[![Build Status](https://travis-ci.org/pisa-engine/trecpp.svg?branch=master)](https://travis-ci.org/pisa-engine/trecpp)
+[![Build Status](https://travis-ci.com/pisa-engine/trecpp.svg?branch=master)](https://travis-ci.org/pisa-engine/trecpp)
 
 A single-header C++ parser for the TREC Web format.
 
