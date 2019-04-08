@@ -183,16 +183,16 @@ TEST_CASE("Read text record", "[unit]")
     REQUIRE(record->trecid() == "b2e89334-33f9-11e1-825f-dabc29fd7071");
     REQUIRE(record->url() == "https://www.washingtonpost.com/stuff");
     REQUIRE(record->content() ==
-            "<TITLE> title </TITLE>\n"
-            "<HEADLINE> headline </HEADLINE>\n"
-            "<TEXT> stuff here... </TEXT>\n");
+            " title \n"
+            " headline \n"
+            " stuff here... \n");
     rec = text::read_record(is);
     CAPTURE(rec);
     record = std::get_if<Record>(&rec);
     REQUIRE(record != nullptr);
     REQUIRE(record->trecid() == "b2e89334-33f9-11e1-825f-dabc29fd7072");
     REQUIRE(record->url() == "");
-    REQUIRE(record->content() == "<TEXT><html> 2</TEX>");
+    REQUIRE(record->content() == " 2");
     rec = text::read_subsequent_record(is);
     REQUIRE(std::get_if<Error>(&rec) != nullptr);
 }

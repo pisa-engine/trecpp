@@ -78,6 +78,27 @@ namespace detail {
         return os.str();
     }
 
+    std::optional<std::string> stripped_body(std::istream &is, std::string const &closing_tag)
+    {
+        std::ostringstream os;
+        while (read_until(is, [](auto ch) { return ch == '<'; }, os)) {
+            if (is.peek() == std::istream::traits_type::eof()) {
+                break;
+            }
+            if (consume(is, closing_tag)) {
+                return std::make_optional(os.str());
+            }
+            while (not is.eof()) {
+                if (is.peek() == std::istream::traits_type::eof() or is.peek() == '>') {
+                    is.ignore(1);
+                    break;
+                }
+                is.ignore(1);
+            }
+        }
+        return std::nullopt;
+    }
+
     std::optional<std::string> read_body(std::istream &is, std::string const &closing_tag)
     {
         std::ostringstream os;
@@ -174,7 +195,7 @@ namespace text {
             }
         }
         is >> std::ws;
-        auto content = detail::read_body(is, detail::DOC_END);
+        auto content = detail::stripped_body(is, detail::DOC_END);
         if (not content) {
             return consume_error(detail::DOC_END);
         }
