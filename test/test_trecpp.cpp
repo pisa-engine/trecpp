@@ -162,7 +162,7 @@ TEST_CASE("Read text record", "[unit]")
         "<URL> https://www.washingtonpost.com/stuff </URL>\n"
         "<TITLE> title </TITLE>\n"
         "<HEADLINE> headline </HEADLINE>\n"
-        "<TEXT> stuff here... </TEXT>\n"
+        "<TEXT> 1 < 2 and other stuff... </TEXT>\n"
         "</DOC>\n        \t"
         "<DOC>\n"
         "<DOCNO> b2e89334-33f9-11e1-825f-dabc29fd7072 </DOCNO>\n"
@@ -185,7 +185,7 @@ TEST_CASE("Read text record", "[unit]")
     REQUIRE(record->content() ==
             " title \n"
             " headline \n"
-            " stuff here... \n");
+            " 1 < 2 and other stuff... \n");
     rec = text::read_record(is);
     CAPTURE(rec);
     record = std::get_if<Record>(&rec);
