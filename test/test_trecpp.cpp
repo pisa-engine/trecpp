@@ -11,13 +11,13 @@ TEST_CASE("Consume tag", "[unit]")
     SECTION("Correct tag")
     {
         std::istringstream is("<DOC>");
-        REQUIRE(consume_tag(is, "<DOC>"));
+        REQUIRE(consume(is, "<DOC>"));
         REQUIRE(is.peek() == std::ifstream::traits_type::eof());
     }
     SECTION("Incorrect at first pos")
     {
         std::istringstream is("DOC>");
-        REQUIRE_FALSE(consume_tag(is, "<DOC>"));
+        REQUIRE_FALSE(consume(is, "<DOC>"));
         std::string s;
         is >> s;
         REQUIRE(s == "DOC>");
@@ -25,7 +25,7 @@ TEST_CASE("Consume tag", "[unit]")
     SECTION("Incorrect at second pos")
     {
         std::istringstream is("<LOC>");
-        REQUIRE_FALSE(consume_tag(is, "<DOC>"));
+        REQUIRE_FALSE(consume(is, "<DOC>"));
         std::string s;
         is >> s;
         REQUIRE(s == "<LOC>");
@@ -33,7 +33,7 @@ TEST_CASE("Consume tag", "[unit]")
     SECTION("Incorrect at third pos")
     {
         std::istringstream is("<DEC>");
-        REQUIRE_FALSE(consume_tag(is, "<DOC>"));
+        REQUIRE_FALSE(consume(is, "<DOC>"));
         std::string s;
         is >> s;
         REQUIRE(s == "<DEC>");
@@ -41,7 +41,7 @@ TEST_CASE("Consume tag", "[unit]")
     SECTION("Incorrect at fourth pos")
     {
         std::istringstream is("<DOK>");
-        REQUIRE_FALSE(consume_tag(is, "<DOC>"));
+        REQUIRE_FALSE(consume(is, "<DOC>"));
         std::string s;
         is >> s;
         REQUIRE(s == "<DOK>");
@@ -49,7 +49,7 @@ TEST_CASE("Consume tag", "[unit]")
     SECTION("Skip whitespaces")
     {
         std::istringstream is(" \t\r<DOC>");
-        CHECK(consume_tag(is, "<DOC>"));
+        CHECK(consume(is, "<DOC>"));
         REQUIRE(is.peek() == std::ifstream::traits_type::eof());
     }
 }
@@ -158,20 +158,21 @@ TEST_CASE("Read text record", "[unit]")
 {
     std::istringstream is(
         "<DOC>\n"
-        "<DOCNO>GX000-00-0000000</DOCNO>\n"
-        "<TEXT>"
-        "<html>"
-        "</TEXT>"
+        "<DOCNO> b2e89334-33f9-11e1-825f-dabc29fd7071 </DOCNO>\n"
+        "<URL> https://www.washingtonpost.com/stuff </URL>\n"
+        "<TITLE> title </TITLE>\n"
+        "<HEADLINE> headline </HEADLINE>\n"
+        "<TEXT> stuff here... </TEXT>\n"
         "</DOC>\n        \t"
         "<DOC>\n"
-        "<DOCNO>GX000-00-0000001</DOCNO>\n"
+        "<DOCNO> b2e89334-33f9-11e1-825f-dabc29fd7072 </DOCNO>\n"
         "<TEXT>"
         "<html> 2"
-        "</TEXT>"
+        "</TEX>"
         "</DOC>\n"
         "<DOC>\n"
-        "<DOCNO>GX000-00-0000001</DOCNO>\n"
-        "<TEX>\n"
+        "<DOCNO> b2e89334-33f9-11e1-825f-dabc29fd7073 </DOCN>\n"
+        "<TEXT>\n"
         "<html> 2"
         "</TEXT>\n"
         "</DOC>");
@@ -179,18 +180,19 @@ TEST_CASE("Read text record", "[unit]")
     CAPTURE(rec);
     Record *record = std::get_if<Record>(&rec);
     REQUIRE(record != nullptr);
-    REQUIRE(record->trecid() == "GX000-00-0000000");
-    REQUIRE(record->url() == "");
-    REQUIRE(record->content() == "<html>");
+    REQUIRE(record->trecid() == "b2e89334-33f9-11e1-825f-dabc29fd7071");
+    REQUIRE(record->url() == "https://www.washingtonpost.com/stuff");
+    REQUIRE(record->content() ==
+            "<TITLE> title </TITLE>\n"
+            "<HEADLINE> headline </HEADLINE>\n"
+            "<TEXT> stuff here... </TEXT>\n");
     rec = text::read_record(is);
-    REQUIRE(std::get_if<Error>(&rec) != nullptr);
-    rec = text::read_subsequent_record(is);
     CAPTURE(rec);
     record = std::get_if<Record>(&rec);
     REQUIRE(record != nullptr);
-    REQUIRE(record->trecid() == "GX000-00-0000001");
+    REQUIRE(record->trecid() == "b2e89334-33f9-11e1-825f-dabc29fd7072");
     REQUIRE(record->url() == "");
-    REQUIRE(record->content() == "<html> 2");
+    REQUIRE(record->content() == "<TEXT><html> 2</TEX>");
     rec = text::read_subsequent_record(is);
     REQUIRE(std::get_if<Error>(&rec) != nullptr);
 }
