@@ -54,6 +54,31 @@ TEST_CASE("Consume tag", "[unit]")
     }
 }
 
+TEST_CASE("Consume any tag", "[unit]")
+{
+    SECTION("Correct tag")
+    {
+        std::istringstream is("<DOC>");
+        REQUIRE(*consume(is) == "DOC");
+        REQUIRE(is.peek() == std::ifstream::traits_type::eof());
+    }
+    SECTION("Incorrect at first pos")
+    {
+        std::istringstream is("DOC>");
+        REQUIRE_FALSE(consume(is, "<DOC>"));
+        REQUIRE(consume(is) == std::nullopt);
+        std::string s;
+        is >> s;
+        REQUIRE(s == "DOC>");
+    }
+    SECTION("Skip whitespaces")
+    {
+        std::istringstream is(" \t\r<DOC>");
+        REQUIRE(*consume(is) == "DOC");
+        REQUIRE(is.peek() == std::ifstream::traits_type::eof());
+    }
+}
+
 TEST_CASE("Read body", "[unit]")
 {
     SECTION("Before tag")
@@ -171,9 +196,11 @@ TEST_CASE("Read text record", "[unit]")
         "</DOC>\n        \t"
         "<DOC>\n"
         "<DOCNO> b2e89334-33f9-11e1-825f-dabc29fd7072 </DOCNO>\n"
+        "<IGNORED>ignored text</IGNORED>\n"
+        "<TTL>not ignored text</TTL>\n"
         "<TEXT>"
         "<html> 2"
-        "</TEX>"
+        "</TEXT>"
         "</DOC>\n"
         "<DOC>\n"
         "<DOCNO> b2e89334-33f9-11e1-825f-dabc29fd7073 </DOCN>\n"
@@ -189,15 +216,17 @@ TEST_CASE("Read text record", "[unit]")
     REQUIRE(record->url() == "https://www.washingtonpost.com/stuff");
     REQUIRE(record->content() ==
             " title \n"
-            " headline \n"
-            " 1 < 2 and other stuff... \n");
+            "\n headline \n"
+            " 1 < 2 and other stuff... ");
     rec = text::read_record(is);
     CAPTURE(rec);
     record = std::get_if<Record>(&rec);
     REQUIRE(record != nullptr);
     REQUIRE(record->trecid() == "b2e89334-33f9-11e1-825f-dabc29fd7072");
     REQUIRE(record->url() == "");
-    REQUIRE(record->content() == " 2");
+    REQUIRE(record->content() ==
+            "not ignored text"
+            "<html> 2");
     rec = text::read_subsequent_record(is);
     REQUIRE(std::get_if<Error>(&rec) != nullptr);
 }

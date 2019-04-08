@@ -3,6 +3,7 @@
 #include <istream>
 #include <ostream>
 #include <string>
+#include <unordered_set>
 #include <variant>
 
 namespace trecpp {
@@ -78,23 +79,17 @@ namespace detail {
         return os.str();
     }
 
-    std::optional<std::string> stripped_body(std::istream &is, std::string const &closing_tag)
+    std::optional<std::string> consume(std::istream &is)
     {
-        std::ostringstream os;
-        while (read_until(is, [](auto ch) { return ch == '<'; }, os)) {
-            if (is.peek() == std::istream::traits_type::eof()) {
-                break;
-            }
-            if (consume(is, closing_tag)) {
-                return std::make_optional(os.str());
-            }
-            while (not is.eof()) {
-                if (is.peek() == std::istream::traits_type::eof() or is.peek() == '>') {
-                    is.ignore(1);
-                    break;
-                }
-                is.ignore(1);
-            }
+        is >> std::ws;
+        if (is.peek() == std::istream::traits_type::eof() or is.peek() != '<') {
+            return std::nullopt;
+        }
+        is.ignore(1);
+        auto tag = read_until(is, [](char ch) { return ch == '>' or std::isspace(ch); });
+        if (is.peek() == '>') {
+            is.ignore(1);
+            return std::make_optional(tag);
         }
         return std::nullopt;
     }
@@ -141,6 +136,17 @@ namespace detail {
         return Error{"EOF"};
     }
 
+    [[nodiscard]] auto closing_tag(std::string const &tag) -> std::string
+    {
+        std::string ct;
+        ct.reserve(tag.size() + 3);
+        ct.push_back('<');
+        ct.push_back('/');
+        std::copy(tag.begin(), tag.end(), std::back_inserter(ct));
+        ct.push_back('>');
+        return ct;
+    }
+
 } // namespace detail
 
 template <typename Record_Handler, typename Error_Handler>
@@ -171,6 +177,9 @@ constexpr bool holds_record(Result const &result) { return std::holds_alternativ
 
 namespace text {
 
+    static const std::unordered_set<std::string> content_tags = {
+        "TEXT", "HEADLINE", "TITLE", "HL", "HEAD", "TTL", "DD", "DATE", "LP", "LEADPARA"};
+
     [[nodiscard]] auto read_record(std::istream &is) -> Result
     {
         if (not detail::consume(is, detail::DOC)) {
@@ -186,20 +195,27 @@ namespace text {
             return consume_error(detail::DOCNO_END);
         }
         std::string url = "";
-        if (detail::consume(is, detail::URL)) {
+        std::ostringstream content;
+        while (not detail::consume(is, detail::DOC_END)) {
             is >> std::ws;
-            url = detail::read_token(is);
-            is >> std::ws;
-            if (not detail::consume(is, detail::URL_END)) {
-                return consume_error(detail::URL_END);
+            auto tag = detail::consume(is);
+            if (not tag) {
+                return consume_error("any tag");
+            }
+            auto closing_tag = detail::closing_tag(*tag);
+            auto body = detail::read_body(is, closing_tag);
+            if (not body) {
+                return consume_error(closing_tag);
+            }
+            if (tag == "URL") {
+                std::copy_if(body->begin(), body->end(), std::back_inserter(url), [](char ch) {
+                    return not std::isspace(ch);
+                });
+            } else if (content_tags.find(*tag) != content_tags.end()) {
+                content << *body;
             }
         }
-        is >> std::ws;
-        auto content = detail::stripped_body(is, detail::DOC_END);
-        if (not content) {
-            return consume_error(detail::DOC_END);
-        }
-        return Record(std::move(docno), std::move(url), std::move(*content));
+        return Record(std::move(docno), std::move(url), std::move(content.str()));
     }
 
     [[nodiscard]] auto read_subsequent_record(std::istream &is) -> Result
