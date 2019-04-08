@@ -207,6 +207,9 @@ TEST_CASE("Read text record", "[unit]")
         "<TEXT>\n"
         "<html> 2"
         "</TEXT>\n"
+        "</DOC>\n"
+        "<DOC>\n"
+        "<DOCNO> b2e89334-33f9-11e1-825f-dabc29fd7071 </DOCNO>\n"
         "</DOC>");
     auto rec = text::read_record(is);
     CAPTURE(rec);
@@ -229,4 +232,10 @@ TEST_CASE("Read text record", "[unit]")
             "<html> 2");
     rec = text::read_subsequent_record(is);
     REQUIRE(std::get_if<Error>(&rec) != nullptr);
+    rec = text::read_subsequent_record(is);
+    record = std::get_if<Record>(&rec);
+    REQUIRE(record != nullptr);
+    REQUIRE(record->trecid() == "b2e89334-33f9-11e1-825f-dabc29fd7071");
+    REQUIRE(record->url() == "");
+    REQUIRE(record->content() == "");
 }
