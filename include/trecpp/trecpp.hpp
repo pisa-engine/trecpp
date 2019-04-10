@@ -86,9 +86,13 @@ namespace detail {
             return std::nullopt;
         }
         is.ignore(1);
-        auto tag = read_until(is, [](char ch) { return ch == '>' or std::isspace(ch); });
+        auto tag = read_until(is, [](char ch) { return ch == '>'; });
         if (is.peek() == '>') {
             is.ignore(1);
+            auto first_whitespace = std::find_if(
+                tag.begin(), tag.end(), [](unsigned char ch) { return std::isspace(ch); });
+            auto size = std::distance(tag.begin(), first_whitespace);
+            tag.resize(size);
             return std::make_optional(tag);
         }
         return std::nullopt;
@@ -170,9 +174,16 @@ auto match(Result const &result, Record_Handler &&record_handler, Error_Handler 
 
 constexpr bool holds_record(Result const &result) { return std::holds_alternative<Record>(result); }
 
-[[nodiscard]] auto consume_error(std::string const& tag) -> Error
+[[nodiscard]] auto consume_error(std::string const &tag, std::istream &is) -> Error
 {
-    return Error{"Could not consume " + tag};
+    std::string context;
+    std::getline(is, context);
+    auto error = Error{"Could not consume " + tag + " in context: " + context};
+    is.putback('\n');
+    for (auto pos = context.rbegin(); pos != context.rend(); ++pos) {
+        is.putback(*pos);
+    }
+    return error;
 }
 
 namespace text {
@@ -183,16 +194,16 @@ namespace text {
     [[nodiscard]] auto read_record(std::istream &is) -> Result
     {
         if (not detail::consume(is, detail::DOC)) {
-            return consume_error(detail::DOC);
+            return consume_error(detail::DOC, is);
         }
         if (not detail::consume(is, detail::DOCNO)) {
-            return consume_error(detail::DOCNO);
+            return consume_error(detail::DOCNO, is);
         }
         is >> std::ws;
         auto docno = detail::read_token(is);
         is >> std::ws;
         if (not detail::consume(is, detail::DOCNO_END)) {
-            return consume_error(detail::DOCNO_END);
+            return consume_error(detail::DOCNO_END, is);
         }
         std::string url = "";
         std::ostringstream content;
@@ -200,12 +211,12 @@ namespace text {
             is >> std::ws;
             auto tag = detail::consume(is);
             if (not tag) {
-                return consume_error("any tag");
+                return consume_error("any tag ", is);
             }
             auto closing_tag = detail::closing_tag(*tag);
             auto body = detail::read_body(is, closing_tag);
             if (not body) {
-                return consume_error(closing_tag);
+                return consume_error(closing_tag, is);
             }
             if (tag == "URL") {
                 std::copy_if(body->begin(), body->end(), std::back_inserter(url), [](char ch) {
@@ -230,24 +241,24 @@ namespace web {
     [[nodiscard]] auto read_record(std::istream &is) -> Result
     {
         if (not detail::consume(is, detail::DOC)) {
-            return consume_error(detail::DOC);
+            return consume_error(detail::DOC, is);
         }
         if (not detail::consume(is, detail::DOCNO)) {
-            return consume_error(detail::DOCNO);
+            return consume_error(detail::DOCNO, is);
         }
         is >> std::ws;
         auto docno = detail::read_token(is);
         if (not detail::consume(is, detail::DOCNO_END)) {
-            return consume_error(detail::DOCNO_END);
+            return consume_error(detail::DOCNO_END, is);
         }
         if (not detail::consume(is, detail::DOCHDR)) {
-            return consume_error(detail::DOCHDR);
+            return consume_error(detail::DOCHDR, is);
         }
         is >> std::ws;
         auto url = detail::read_token(is);
         is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
         if (not is) {
-            return consume_error(detail::DOCHDR_END);
+            return consume_error(detail::DOCHDR_END, is);
         }
         is.putback('<');
         while (not is.eof() and not detail::consume(is, detail::DOCHDR_END)) {
@@ -258,7 +269,7 @@ namespace web {
         is >> std::ws;
         auto content = detail::read_body(is, detail::DOC_END);
         if (not content) {
-            return consume_error(detail::DOC_END);
+            return consume_error(detail::DOC_END, is);
         }
         return Record(std::move(docno), std::move(url), std::move(*content));
     }

@@ -196,7 +196,7 @@ TEST_CASE("Read text record", "[unit]")
         "</DOC>\n        \t"
         "<DOC>\n"
         "<DOCNO> b2e89334-33f9-11e1-825f-dabc29fd7072 </DOCNO>\n"
-        "<IGNORED>ignored text</IGNORED>\n"
+        "<IGNORED attr=val>ignored text</IGNORED>\n"
         "<TTL>not ignored text</TTL>\n"
         "<TEXT>"
         "<html> 2"
