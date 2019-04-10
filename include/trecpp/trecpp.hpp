@@ -215,7 +215,7 @@ namespace text {
                 content << *body;
             }
         }
-        return Record(std::move(docno), std::move(url), std::move(content.str()));
+        return Record(std::move(docno), std::move(url), content.str());
     }
 
     [[nodiscard]] auto read_subsequent_record(std::istream &is) -> Result
