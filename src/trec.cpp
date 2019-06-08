@@ -12,7 +12,7 @@ using trecpp::Record;
 using trecpp::Result;
 
 template <class RF, class Fn>
-void read(std::istream &is, RF read, Fn print_record)
+void read(std::istream &is, RF read, Fn &&print_record)
 {
     while (not is.eof()) {
         match(
@@ -74,7 +74,14 @@ int main(int argc, char **argv)
     if (text) {
         read(*is, trecpp::text::read_subsequent_record, print(*os));
     } else {
-        read(*is, trecpp::web::read_subsequent_record, print(*os));
+        auto print_record = print(*os);
+        trecpp::web::TrecParser parser(*is);
+        while (not is->eof()) {
+            match(
+                parser.read_record(),
+                [&](Record const &rec) { print_record(rec); },
+                [&](Error const &error) { std::clog << "Invalid record: " << error << '\n'; });
+        }
     }
     return 0;
 }

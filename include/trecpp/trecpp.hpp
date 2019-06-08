@@ -3,6 +3,7 @@
 #include <istream>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <variant>
 
@@ -44,15 +45,58 @@ namespace detail {
     static std::string const URL = "<URL>";
     static std::string const URL_END = "</URL>";
 
+    [[nodiscard]] auto skip_ws(std::string_view const &data, std::size_t pos) -> std::size_t
+    {
+        auto it = std::find_if(
+            &data[pos], &data[data.size()], [](unsigned char ch) { return !std::isspace(ch); });
+        return pos + std::distance(&data[pos], it);
+    }
+
+    [[nodiscard]] auto skip_to_ws(std::string_view const &data, std::size_t pos) -> std::size_t
+    {
+        auto it = std::find_if(
+            &data[pos], &data[data.size()], [](unsigned char ch) { return std::isspace(ch); });
+        return pos + std::distance(&data[pos], it);
+    }
+
+    [[nodiscard]] auto read_between(std::string_view const &data, std::size_t &pos)
+    {
+        return [&](auto const &open, auto const &close) -> std::optional<std::string_view> {
+            auto begin = data.find(open, pos);
+            if (begin == std::string_view::npos) {
+                return std::nullopt;
+            } else {
+                begin += open.size();
+            }
+            auto end = data.find(close, begin);
+            if (end == std::string_view::npos) {
+                return std::nullopt;
+            }
+            pos = end;
+            return std::string_view(&data[begin], end - begin);
+        };
+    }
+
+    [[nodiscard]] auto consumer(std::string_view &data, std::size_t &pos)
+    {
+        return [&](auto const &tag) {
+            pos = skip_ws(data, pos);
+            auto tag_len = tag.size();
+            if (pos + tag_len < pos && data.substr(pos, tag_len) == tag) {
+                pos += tag_len;
+                return true;
+            } else {
+                return false;
+            }
+        };
+    }
+
     bool consume(std::istream &is, std::string const &token)
     {
         is >> std::ws;
         for (auto pos = token.begin(); pos != token.end(); ++pos) {
             if (is.get() != *pos) {
                 is.unget();
-                for (auto rpos = std::reverse_iterator(pos); rpos != token.rend(); ++rpos) {
-                    is.putback(*rpos);
-                }
                 return false;
             }
         }
@@ -111,6 +155,14 @@ namespace detail {
             os.put(is.get());
         }
         return std::nullopt;
+    }
+
+    std::string_view read_token(std::string_view const &data, std::size_t &pos)
+    {
+        pos = skip_ws(data, pos);
+        auto first = pos;
+        pos = skip_to_ws(data, pos + 1);
+        return std::string_view(&data[first], pos - first);
     }
 
     std::string read_token(std::istream &is)
@@ -238,46 +290,81 @@ namespace text {
 
 namespace web {
 
-    [[nodiscard]] auto read_record(std::istream &is) -> Result
+    [[nodiscard]] auto parse(std::string_view data) -> Result
     {
-        if (not detail::consume(is, detail::DOC)) {
-            return consume_error(detail::DOC, is);
+        std::size_t pos = 0;
+        auto consume_error = [&](auto const &tag) -> Error {
+            auto context_size = std::min(tag.size(), data.size() - pos);
+            auto context = std::string_view(&data[pos], context_size);
+            return Error{"Could not consume " + tag + " in context: " + std::string(context)};
+        };
+        auto read_between = detail::read_between(data, pos);
+
+        auto docno = read_between(detail::DOCNO, detail::DOCNO_END);
+        if (not docno) {
+            return consume_error(detail::DOCNO);
         }
-        if (not detail::consume(is, detail::DOCNO)) {
-            return consume_error(detail::DOCNO, is);
+
+        pos = data.find(detail::DOCHDR, pos);
+        if (pos == std::string_view::npos) {
+            return consume_error(detail::DOCHDR);
         }
-        is >> std::ws;
-        auto docno = detail::read_token(is);
-        if (not detail::consume(is, detail::DOCNO_END)) {
-            return consume_error(detail::DOCNO_END, is);
+        pos += detail::DOCHDR.size();
+        auto url = detail::read_token(data, pos);
+
+        auto body = read_between(detail::DOCHDR_END, detail::DOC_END);
+        if (not docno) {
+            return consume_error(detail::DOCNO);
         }
-        if (not detail::consume(is, detail::DOCHDR)) {
-            return consume_error(detail::DOCHDR, is);
-        }
-        is >> std::ws;
-        auto url = detail::read_token(is);
-        is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
-        if (not is) {
-            return consume_error(detail::DOCHDR_END, is);
-        }
-        is.putback('<');
-        while (not is.eof() and not detail::consume(is, detail::DOCHDR_END)) {
-            is.ignore(1);
-            is.ignore(std::numeric_limits<std::streamsize>::max(), '<');
-            is.putback('<');
-        }
-        is >> std::ws;
-        auto content = detail::read_body(is, detail::DOC_END);
-        if (not content) {
-            return consume_error(detail::DOC_END, is);
-        }
-        return Record(std::move(docno), std::move(url), std::move(*content));
+        return Record(std::string(*docno), std::string(url), std::string(*body));
     }
 
-    [[nodiscard]] auto read_subsequent_record(std::istream &is) -> Result
-    {
-        return detail::read_subsequent_record(is, read_record);
-    }
+    class TrecParser {
+       public:
+        TrecParser(std::istream &input, std::size_t batch_size = 10000)
+            : input_(input), batch_size_(batch_size)
+        {
+        }
+        [[nodiscard]] auto operator()() -> Result { return read_record(); }
+        [[nodiscard]] auto read_record() -> Result
+        {
+            auto view = read_enough();
+            if (not view) {
+                return Error{"EOF"};
+            } else {
+                auto res = web::parse(*view);
+                buf_.erase(buf_.begin(), buf_.begin() + view->size());
+                return res;
+            }
+        }
+
+       private:
+        /// Reads at least enough to buffer the next record.
+        /// It returns `std::nullopt` if the next record cannot be read.
+        [[nodiscard]] auto read_enough() -> std::optional<std::string_view>
+        {
+            std::string_view view(&buf_[0], buf_.size());
+            auto pos = view.find(detail::DOC_END);
+            while (pos == std::string_view::npos) {
+                auto old_size = buf_.size();
+                buf_.resize(buf_.size() + batch_size_);
+                input_.read(&buf_[old_size], batch_size_);
+                if (input_.gcount() == 0) {
+                    return std::nullopt;
+                }
+                buf_.resize(old_size + input_.gcount());
+                view = std::string_view(&buf_[0], buf_.size());
+                pos =
+                    view.find(detail::DOC_END,
+                              std::max(old_size, detail::DOC_END.size()) - detail::DOC_END.size());
+            }
+            return std::string_view(&buf_[0], pos + detail::DOC_END.size());
+        }
+
+        std::istream &input_;
+        std::size_t batch_size_;
+        std::vector<char> buf_{};
+    };
 
 } // namespace web
 
