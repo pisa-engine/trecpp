@@ -97,6 +97,9 @@ namespace detail {
         for (auto pos = token.begin(); pos != token.end(); ++pos) {
             if (is.get() != *pos) {
                 is.unget();
+                for (auto rpos = std::reverse_iterator(pos); rpos != token.rend(); ++rpos) {
+                    is.putback(*rpos);
+                }
                 return false;
             }
         }
