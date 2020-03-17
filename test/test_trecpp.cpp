@@ -346,3 +346,29 @@ TEST_CASE("Read text record", "[unit]")
     REQUIRE(record->url() == "");
     REQUIRE(record->content() == "");
 }
+
+TEST_CASE("Match result", "[unit]")
+{
+    Result result(Record("01", "URL", "CONTENT"));
+    std::string trecid;
+    // Works when mutable
+    match(
+        result,
+        [&trecid](auto&& record){
+            trecid = std::move(record.trecid()); // move out of record
+            REQUIRE(record.url() == "URL");
+            REQUIRE(record.content() == "CONTENT");
+        },
+        [](auto&& error){}
+    );
+    // Works when const
+    match(
+        result,
+        [](auto const& record){
+            REQUIRE(record.trecid() != "01"); // moved out so not equal
+            REQUIRE(record.url() == "URL");
+            REQUIRE(record.content() == "CONTENT");
+        },
+        [](auto&& error){}
+    );
+}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <istream>
 #include <ostream>
 #include <string>
@@ -26,10 +27,12 @@ class Record {
         : docno_(std::move(docno)), url_(std::move(url)), content_(std::move(content))
     {}
     [[nodiscard]] auto content_length() const -> std::size_t { return content_.size(); }
-    [[nodiscard]] auto content() -> std::string & { return content_; }
+    [[nodiscard]] auto content() -> std::string && { return std::move(content_); }
     [[nodiscard]] auto content() const -> std::string const & { return content_; }
     [[nodiscard]] auto url() const -> std::string const & { return url_; }
+    [[nodiscard]] auto url() -> std::string && { return std::move(url_); }
     [[nodiscard]] auto trecid() const -> std::string const & { return docno_; }
+    [[nodiscard]] auto trecid() -> std::string && { return std::move(docno_); }
 
     friend std::ostream &operator<<(std::ostream &os, Record const &record);
 };
@@ -208,8 +211,8 @@ namespace detail {
 
 } // namespace detail
 
-template <typename Record_Handler, typename Error_Handler>
-auto match(Result const &result, Record_Handler &&record_handler, Error_Handler &&error_handler)
+template <typename R, typename Record_Handler, typename Error_Handler>
+auto match(R &&result, Record_Handler &&record_handler, Error_Handler &&error_handler)
 {
     if (auto *record = std::get_if<Record>(&result); record != nullptr) {
         if constexpr (std::is_same_v<decltype(record_handler(*record)), void>) {
